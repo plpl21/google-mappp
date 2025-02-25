@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TextInput, TouchableOpacity, FlatList, Alert, StyleSheet, Animated, Modal } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, Alert, StyleSheet, Animated } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import MapViewDirections from 'react-native-maps-directions';
 import axios from 'axios';
@@ -16,7 +16,6 @@ const Map = () => {
   const [selectedHospital, setSelectedHospital] = useState(null);
   const [destination, setDestination] = useState(null);
   const [favorites, setFavorites] = useState([]);
-  const [showFavoritesModal, setShowFavoritesModal] = useState(false);
   const slideAnim = useRef(new Animated.Value(500)).current;
   const mapRef = useRef(null);
 
@@ -66,11 +65,37 @@ const Map = () => {
   const fetchNearbyHospitals = async (location) => {
     try {
       if (!location) return;
-      const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${location.latitude},${location.longitude}&radius=5000&type=hospital&key=${apiKey}`;
+      const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${location.latitude},${location.longitude}&radius=5000&type=veterinary_care&key=${apiKey}`;
       const response = await axios.get(url);
       if (response.data.status === 'OK') setHospitals(response.data.results);
     } catch {
-      Alert.alert('근처 병원 정보를 가져오는 중 오류 발생');
+      Alert.alert('근처 동물병원 정보를 가져오는 중 오류 발생');
+    }
+  };
+
+  const searchLocation = async () => {
+    if (!searchQuery.trim()) return Alert.alert('검색어를 입력하세요');
+
+    try {
+      const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(searchQuery)}&key=${apiKey}`;
+      const response = await axios.get(url);
+
+      if (response.data.status === 'OK') {
+        const location = response.data.results[0].geometry.location;
+        const newCoordinates = {
+          latitude: location.lat,
+          longitude: location.lng,
+        };
+        setCoordinates(newCoordinates);
+        moveToLocation(newCoordinates);
+        
+        setHospitals([]);
+        fetchNearbyHospitals(newCoordinates);
+      } else {
+        Alert.alert('검색 결과가 없습니다.');
+      }
+    } catch {
+      Alert.alert('검색 중 오류가 발생했습니다.');
     }
   };
 
@@ -100,11 +125,8 @@ const Map = () => {
           value={searchQuery}
           onChangeText={setSearchQuery}
         />
-        <TouchableOpacity style={styles.searchButton} onPress={() => fetchNearbyHospitals(coordinates)}>
+        <TouchableOpacity style={styles.searchButton} onPress={searchLocation}>
           <Text style={{ color: 'white' }}>검색</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.favoriteListButton} onPress={() => setShowFavoritesModal(true)}>
-          <FontAwesome name="star" size={20} color="white" />
         </TouchableOpacity>
         <TouchableOpacity style={styles.locationButton} onPress={getCurrentLocation}>
           <MaterialIcons name="my-location" size={24} color="white" />
@@ -122,6 +144,7 @@ const Map = () => {
         style={styles.map}
       >
         {coordinates && <Marker coordinate={coordinates} title="내 위치" pinColor="red" />}
+
         {hospitals.map((hospital) => (
           <Marker
             key={hospital.place_id}
@@ -134,6 +157,20 @@ const Map = () => {
             pinColor="blue"
           />
         ))}
+
+        {favorites.map((fav) => (
+          <Marker
+            key={fav.place_id}
+            coordinate={{
+              latitude: fav.geometry.location.lat,
+              longitude: fav.geometry.location.lng,
+            }}
+            title={`⭐ ${fav.name}`}
+            onPress={() => handleSelectHospital(fav)}
+            pinColor="gold"
+          />
+        ))}
+
         {coordinates && destination && (
           <MapViewDirections
             origin={coordinates}
@@ -167,13 +204,11 @@ const Map = () => {
   );
 };
 
-
-
 const styles = StyleSheet.create({
   container: { flex: 1 },
   searchContainer: { 
     position: 'absolute', 
-    top: 40,  // 🔥 기존보다 조금 아래로 이동
+    top: 50, 
     left: 10, 
     right: 10, 
     backgroundColor: 'rgba(255, 255, 255, 0.9)', 
@@ -185,7 +220,6 @@ const styles = StyleSheet.create({
   },
   searchInput: { flex: 1, backgroundColor: '#f2f2f2', padding: 8, borderRadius: 5 },
   searchButton: { padding: 8, backgroundColor: '#3498db', borderRadius: 5 },
-  favoriteListButton: { padding: 8, backgroundColor: '#f39c12', borderRadius: 5 },
   locationButton: { padding: 8, backgroundColor: '#2ecc71', borderRadius: 5 },
   map: { flex: 1 },
   detailContainer: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'white', padding: 20 },
@@ -194,6 +228,5 @@ const styles = StyleSheet.create({
   closeButton: { marginTop: 10, padding: 10, backgroundColor: '#3498db', borderRadius: 5, alignItems: 'center' },
   closeButtonText: { color: 'white' },
 });
-
 
 export default Map;
